@@ -1,0 +1,1654 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>DSO — interaktywny przepływ pieniądza</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800;900&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --jh-yellow: #FFCB05;
+    --jh-yellow-deep: #F5B400;
+    --jh-black: #0A0A0A;
+    --jh-ink: #1A1A1A;
+    --jh-grey: #6B6B6B;
+    --jh-line: #E5E5E5;
+    --jh-red: #E30613;
+    --jh-red-deep: #B30410;
+    --jh-cream: #FFFDF5;
+
+    /* dynamic vars - controlled by JS */
+    --coin-speed: 6s;
+    --coin-count: 6;
+    --zone-color: var(--jh-yellow);
+    --zone-stripe: rgba(255,203,5,0.18);
+    --zone-tint: rgba(255,203,5,0.05);
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+
+  html,body{
+    background:#2a2a2a;
+    font-family:'Manrope',sans-serif;
+    color:var(--jh-ink);
+    -webkit-font-smoothing:antialiased;
+  }
+
+  body{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    padding:32px 16px;
+    min-height:100vh;
+  }
+
+  /* A4 LANDSCAPE: 297mm × 210mm */
+  .page{
+    width: 297mm;
+    height: 210mm;
+    background: var(--jh-cream);
+    box-shadow: 0 30px 80px rgba(0,0,0,0.5);
+    position: relative;
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: auto auto 1fr auto auto;
+    transition: background 0.4s ease;
+  }
+
+  /* ─── HEADER ─────────────────────────────────────────── */
+  .header{
+    background: var(--jh-black);
+    color:#fff;
+    padding: 14px 36px 16px;
+    position:relative;
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:32px;
+  }
+  .header::before{
+    content:"";
+    position:absolute;
+    top:0;right:-1px;bottom:0;
+    width:32%;
+    background:var(--jh-yellow);
+    clip-path: polygon(22% 0, 100% 0, 100% 100%, 0% 100%);
+    transition: background 0.4s ease;
+  }
+  .h-left{
+    display:flex; align-items:baseline; gap:18px;
+    position:relative; z-index:2;
+  }
+  .h-mark{
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:900;
+    font-size:64px;
+    line-height:.85;
+    letter-spacing:-.02em;
+    color:#fff;
+  }
+  .h-mark .accent{
+    background:var(--jh-yellow);
+    color:var(--jh-black);
+    padding:0 12px 4px;
+    display:inline-block;
+    transform:skewX(-6deg);
+    transition: background 0.4s ease;
+  }
+  .h-tag{
+    display:flex;flex-direction:column;gap:2px;
+    border-left: 3px solid var(--jh-yellow);
+    padding-left: 14px;
+    transition: border-color 0.4s ease;
+  }
+  .h-tag .eyebrow{
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:700;
+    font-size:11px;
+    letter-spacing:.28em;
+    text-transform:uppercase;
+    color:var(--jh-yellow);
+    transition: color 0.4s ease;
+  }
+  .h-tag .name{
+    font-family:'Manrope',sans-serif;
+    font-weight:600;
+    font-size:13px;
+    color:rgba(255,255,255,.85);
+    line-height:1.2;
+  }
+
+  .h-right{
+    position:relative; z-index:2;
+    display:flex; flex-direction:column; align-items:flex-end; gap:3px;
+    padding-right: 4px;
+    max-width: 26%;
+    text-align:right;
+  }
+  .h-right .kicker{
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:700;
+    font-size:10px;
+    letter-spacing:.28em;
+    text-transform:uppercase;
+    color:var(--jh-black);
+    opacity:.75;
+  }
+  .h-right .lead{
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:800;
+    font-size:20px;
+    line-height:1;
+    color:var(--jh-black);
+    letter-spacing:-.005em;
+    text-align:right;
+    white-space:nowrap;
+  }
+  .h-right .lead em{
+    font-style:normal;
+    background:var(--jh-black);
+    color:var(--jh-yellow);
+    padding:0 7px 2px;
+    transition: color 0.4s ease;
+  }
+
+  /* ─── GAME CONTROL BAR ───────────────────────────────── */
+  .controls{
+    background: #fff;
+    border-bottom: 2px solid var(--jh-black);
+    padding: 12px 32px 22px;
+    display:grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 24px;
+    align-items:center;
+    position: relative;
+  }
+
+  /* LEFT: state display */
+  .game-state{
+    display:flex; align-items:center; gap: 14px;
+  }
+  .state-pill{
+    background: var(--zone-color);
+    border: 2px solid var(--jh-black);
+    padding: 4px 12px 6px;
+    text-align:center;
+    line-height: 1;
+    transition: background 0.3s ease;
+    min-width: 86px;
+  }
+  .state-pill .num{
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:900;
+    font-size: 26px;
+    color: var(--jh-black);
+    letter-spacing:-.02em;
+    line-height: .9;
+  }
+  .state-pill .unit{
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:700;
+    font-size:9px;
+    letter-spacing:.25em;
+    color: var(--jh-black);
+    text-transform:uppercase;
+  }
+  .state-meta{
+    display:flex; flex-direction:column; gap:1px;
+  }
+  .state-meta .lbl{
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:800;
+    font-size:9px;
+    letter-spacing:.28em;
+    text-transform:uppercase;
+    color: var(--jh-grey);
+  }
+  .state-meta .val{
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:800;
+    font-size:14px;
+    text-transform: uppercase;
+    color: var(--jh-black);
+    line-height: 1.1;
+    letter-spacing: .03em;
+  }
+
+  /* CENTER: the big negotiate button */
+  .negotiate-wrap{
+    position: relative;
+    display:flex; justify-content:center;
+  }
+  .negotiate-btn{
+    background: var(--jh-yellow);
+    border: 3px solid var(--jh-black);
+    color: var(--jh-black);
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight: 900;
+    font-size: 18px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: 10px 26px 11px;
+    cursor: pointer;
+    box-shadow: 5px 5px 0 var(--jh-black);
+    transition: transform 0.08s ease, box-shadow 0.08s ease;
+    display: flex; align-items: center; gap: 10px;
+    line-height: 1;
+    position: relative;
+    user-select: none;
+  }
+  .negotiate-btn:hover{
+    transform: translate(-1px, -1px);
+    box-shadow: 6px 6px 0 var(--jh-black);
+  }
+  .negotiate-btn:active, .negotiate-btn.pressed{
+    transform: translate(3px, 3px);
+    box-shadow: 2px 2px 0 var(--jh-black);
+  }
+  .negotiate-btn .icon{
+    font-size: 22px;
+    line-height: 1;
+  }
+  .negotiate-btn small{
+    display:block;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .15em;
+    opacity: .7;
+    margin-top: 2px;
+    text-transform: uppercase;
+  }
+  .negotiate-btn .label-stack{ display:flex; flex-direction:column; align-items:flex-start; }
+  .negotiate-btn:disabled{
+    background: #ddd;
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+  .negotiate-btn:disabled:hover{
+    transform: none;
+    box-shadow: 5px 5px 0 var(--jh-black);
+  }
+
+  /* floating "-X DNI" feedback */
+  .float-feedback{
+    position: absolute;
+    left: 50%;
+    bottom: 100%;
+    transform: translateX(-50%);
+    pointer-events: none;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 900;
+    font-size: 22px;
+    color: var(--jh-black);
+    background: var(--jh-yellow);
+    border: 2px solid var(--jh-black);
+    padding: 4px 10px 5px;
+    line-height: 1;
+    white-space: nowrap;
+    box-shadow: 2px 2px 0 var(--jh-black);
+    animation: floatUp 1.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+    z-index: 20;
+  }
+  .float-feedback.big{
+    background: var(--jh-yellow);
+    font-size: 26px;
+    transform: translateX(-50%) scale(1.1);
+  }
+  .float-feedback.small{
+    background: #fff;
+    color: var(--jh-grey);
+    font-size: 16px;
+  }
+  .float-feedback.miss{
+    background: var(--jh-line);
+    color: var(--jh-grey);
+    font-size: 14px;
+  }
+  @keyframes floatUp {
+    0%   { transform: translateX(-50%) translateY(0)    scale(0.5); opacity: 0; }
+    15%  { transform: translateX(-50%) translateY(-8px) scale(1.15); opacity: 1; }
+    25%  { transform: translateX(-50%) translateY(-12px) scale(1);   opacity: 1; }
+    100% { transform: translateX(-50%) translateY(-80px) scale(0.95); opacity: 0; }
+  }
+
+  /* RIGHT: counter + reset */
+  .game-meta{
+    display:flex; align-items:center; gap: 10px;
+  }
+  .counter{
+    background: var(--jh-black);
+    color: var(--jh-yellow);
+    padding: 6px 12px 7px;
+    font-family:'Barlow Condensed',sans-serif;
+    line-height: 1;
+    text-align: center;
+    transition: color 0.3s ease;
+  }
+  .counter .num{
+    font-weight: 900;
+    font-size: 22px;
+    color: var(--zone-color);
+    letter-spacing: -.01em;
+    transition: color 0.3s ease;
+  }
+  .counter .unit{
+    font-weight: 700;
+    font-size: 8px;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.7);
+    margin-top: 1px;
+  }
+  .counter .lbl{
+    display:block;
+    font-weight: 700;
+    font-size: 8px;
+    letter-spacing: .25em;
+    color: rgba(255,255,255,.55);
+    text-transform: uppercase;
+    margin-bottom: 1px;
+  }
+
+  .reset-btn{
+    background: #fff;
+    border: 2px solid var(--jh-black);
+    color: var(--jh-black);
+    width: 36px; height: 36px;
+    cursor: pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition: all 0.15s ease;
+    box-shadow: 2px 2px 0 var(--jh-black);
+  }
+  .reset-btn:hover{
+    background: var(--jh-yellow);
+    transform: translate(-1px,-1px);
+    box-shadow: 3px 3px 0 var(--jh-black);
+  }
+  .reset-btn:active{
+    transform: translate(2px,2px);
+    box-shadow: 0 0 0 var(--jh-black);
+  }
+  .reset-btn svg{ width: 18px; height: 18px; }
+
+  /* ─── ACHIEVEMENT BANNER ─────────────────────────────── */
+  .achievement{
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.5);
+    background: var(--jh-black);
+    color: var(--jh-yellow);
+    border: 4px solid var(--jh-yellow);
+    padding: 18px 40px 20px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 900;
+    font-size: 28px;
+    letter-spacing: .04em;
+    text-align: center;
+    box-shadow: 8px 8px 0 var(--jh-yellow), 8px 8px 0 4px var(--jh-black);
+    z-index: 100;
+    opacity: 0;
+    pointer-events: none;
+    line-height: 1.1;
+    text-transform: uppercase;
+  }
+  .achievement.show{
+    animation: achievementPop 2.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  .achievement small{
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .3em;
+    color: var(--jh-yellow);
+    opacity: .85;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+  }
+  .achievement .emoji{
+    font-size: 30px;
+    margin-right: 8px;
+  }
+  @keyframes achievementPop {
+    0%   { transform: translate(-50%, -50%) scale(0.5) rotate(-8deg); opacity: 0; }
+    15%  { transform: translate(-50%, -50%) scale(1.1) rotate(2deg);  opacity: 1; }
+    25%  { transform: translate(-50%, -50%) scale(1)   rotate(0deg);  opacity: 1; }
+    80%  { transform: translate(-50%, -50%) scale(1)   rotate(0deg);  opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(0.85) rotate(-3deg); opacity: 0; }
+  }
+
+  /* shake the page when negotiation succeeds well */
+  @keyframes shakeJoy {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-2px); }
+    75% { transform: translateX(2px); }
+  }
+  .page.celebrate {
+    animation: shakeJoy 0.3s ease 2;
+  }
+
+  /* combo meter — always visible, no pop animations */
+  .combo-meter{
+    position: absolute;
+    bottom: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 14px;
+    pointer-events: none;
+    z-index: 4;
+    opacity: 0.55;
+    transition: opacity 0.25s ease;
+  }
+  .combo-meter.active{ opacity: 1; }
+  .combo-meter .label{
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 800;
+    font-size: 10px;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--jh-grey);
+    line-height: 1;
+  }
+  .combo-meter.active .label{ color: var(--jh-black); }
+  .combo-meter .bar{
+    width: 110px;
+    height: 8px;
+    background: #fff;
+    border: 2px solid var(--jh-black);
+    position: relative;
+    overflow: hidden;
+  }
+  .combo-meter .fill{
+    position: absolute;
+    top:0; left:0; bottom:0;
+    background: linear-gradient(90deg, var(--jh-yellow) 0%, #FFA40A 50%, var(--jh-red) 100%);
+    background-size: 200% 100%;
+    width: 0%;
+    transition: width 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .combo-meter .num{
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 900;
+    font-size: 13px;
+    color: var(--jh-black);
+    line-height: 1;
+    min-width: 22px;
+  }
+  .combo-meter.hot .num{ color: var(--jh-red); }
+  .negotiate-btn.hot{
+    background: linear-gradient(95deg, var(--jh-yellow) 0%, #FFE066 50%, var(--jh-yellow) 100%);
+    background-size: 200% 100%;
+    animation: hotShimmer 0.6s linear infinite;
+  }
+  @keyframes hotShimmer{
+    0%   { background-position: 0% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* DEMO button — visible, prominent */
+  .demo-btn{
+    background: var(--jh-black);
+    color: var(--jh-yellow);
+    border: 3px solid var(--jh-black);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 900;
+    font-size: 13px;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    padding: 8px 14px 10px;
+    cursor: pointer;
+    box-shadow: 3px 3px 0 var(--jh-yellow);
+    transition: all 0.15s ease;
+    display: flex; align-items: center; gap: 8px;
+    line-height: 1;
+    position: relative;
+  }
+  .demo-btn:hover{
+    transform: translate(-1px, -1px);
+    box-shadow: 4px 4px 0 var(--jh-yellow);
+  }
+  .demo-btn:active{
+    transform: translate(2px, 2px);
+    box-shadow: 1px 1px 0 var(--jh-yellow);
+  }
+  /* attention pulse on the demo button until it has been clicked */
+  .demo-btn.attract::before{
+    content:"";
+    position:absolute;
+    top: -4px; left: -4px; right: -4px; bottom: -4px;
+    border: 2px solid var(--jh-yellow);
+    pointer-events:none;
+    animation: attractPulse 1.6s ease-in-out infinite;
+  }
+  @keyframes attractPulse{
+    0%, 100%{ opacity: 0; transform: scale(1); }
+    50%{ opacity: 1; transform: scale(1.02); }
+  }
+  .demo-btn .icon{
+    font-size: 12px;
+    line-height: 1;
+    color: var(--jh-yellow);
+  }
+  .demo-btn.active{
+    background: var(--jh-red);
+    color: #fff;
+    border-color: var(--jh-red);
+    box-shadow: 3px 3px 0 var(--jh-black);
+  }
+  .demo-btn.active .icon{ color: #fff; }
+  .demo-btn.active::before{ display: none; }
+
+  /* demo indicator — corner ribbon */
+  .demo-flag{
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: var(--jh-black);
+    color: var(--jh-yellow);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 800;
+    font-size: 11px;
+    letter-spacing: .3em;
+    padding: 4px 12px 5px;
+    border: 2px solid var(--jh-yellow);
+    line-height: 1;
+    z-index: 50;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    text-transform: uppercase;
+    box-shadow: 2px 2px 0 var(--jh-black);
+  }
+  .demo-flag.show{ opacity: 1; }
+  .demo-flag::before{
+    content: "● ";
+    color: var(--jh-yellow);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse{
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  /* button gets a subtle running-light border in demo mode */
+  .negotiate-btn.demo-running{
+    background-image: linear-gradient(90deg, var(--jh-black), var(--jh-black)),
+                      linear-gradient(90deg, var(--jh-yellow), var(--jh-red), var(--jh-yellow));
+    background-clip: padding-box, border-box;
+    background-origin: padding-box, border-box;
+    border: 3px solid transparent;
+  }
+
+  /* coin-burst: tiny coin icons that fly toward the vault on negotiation */
+  .coin-burst{
+    position: absolute;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #FFE066, var(--jh-yellow) 60%, var(--jh-yellow-deep));
+    border: 2px solid var(--jh-black);
+    pointer-events: none;
+    z-index: 30;
+    transition: all 1s cubic-bezier(0.5, -0.4, 0.5, 1.4);
+  }
+
+  /* ─── HERO FLOW ──────────────────────────────────────── */
+  .hero{
+    position:relative;
+    padding: 4px 28px 6px;
+    display:flex; flex-direction:column;
+    background: var(--zone-tint);
+    transition: background 0.4s ease;
+  }
+
+  .flow{
+    flex:1;
+    display:grid;
+    grid-template-columns: 200px 1fr 200px;
+    align-items:center;
+    gap:0;
+    position:relative;
+  }
+
+  /* Endpoints */
+  .node{
+    display:flex; flex-direction:column; align-items:center;
+    gap:8px;
+    position:relative;
+    z-index:3;
+  }
+  .node .dot{
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:800;
+    font-size:12px;
+    letter-spacing:.25em;
+    text-transform:uppercase;
+    color:var(--jh-grey);
+    margin-bottom:2px;
+  }
+  .node .icon{
+    width:108px; height:108px;
+    background:var(--jh-yellow);
+    border:4px solid var(--jh-black);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow: 6px 6px 0 var(--jh-black);
+    transition: background 0.3s ease;
+  }
+  .node .icon svg{ width:60px; height:60px; }
+  .node .label{
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:800;
+    font-size:24px;
+    text-transform:uppercase;
+    color:var(--jh-black);
+    letter-spacing:.04em;
+    line-height:1;
+    margin-top:6px;
+  }
+  .node .sub{
+    font-family:'Manrope',sans-serif;
+    font-size:12px;
+    color:var(--jh-grey);
+    line-height:1.3;
+    text-align:center;
+    max-width:160px;
+  }
+
+  /* ── VAULT (right side, dynamic) ── */
+  .vault{
+    width: 130px; height: 108px;
+    background: #fff;
+    border: 4px solid var(--jh-black);
+    box-shadow: 6px 6px 0 var(--jh-black);
+    position: relative;
+  }
+  /* combination dial */
+  .vault-dial{
+    position:absolute;
+    top: 8px; left: 10px;
+    width: 22px; height: 22px;
+    border: 2.5px solid var(--jh-black);
+    border-radius: 50%;
+    background: #fff;
+    z-index: 3;
+  }
+  .vault-dial::after{
+    content:"";
+    position:absolute;
+    top: 1px; left: 50%;
+    width: 2.5px; height: 7px;
+    background: var(--jh-black);
+    transform: translateX(-50%);
+    transform-origin: 50% 8.5px;
+    animation: dial-spin 8s linear infinite;
+  }
+  @keyframes dial-spin{
+    0%{ transform: translateX(-50%) rotate(0deg); }
+    100%{ transform: translateX(-50%) rotate(360deg); }
+  }
+  /* PLN label badge */
+  .vault-label{
+    position:absolute;
+    top: 10px; right: 10px;
+    background: var(--jh-black);
+    color: var(--zone-color);
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:900;
+    font-size: 13px;
+    letter-spacing: .12em;
+    padding: 3px 8px 4px;
+    z-index: 3;
+    transition: color 0.3s ease;
+  }
+  /* inner cash window */
+  .vault-window{
+    position:absolute;
+    top: 38px; left: 10px; right: 10px; bottom: 10px;
+    background: var(--jh-black);
+    display: flex;
+    flex-direction: column-reverse;
+    padding: 4px 6px;
+    gap: 3px;
+    overflow: hidden;
+  }
+  .vault-bill{
+    height: 7px;
+    background: var(--zone-color);
+    border-radius: 1.5px;
+    transition: opacity 0.35s ease, height 0.35s ease, background 0.3s ease, transform 0.35s ease;
+    transform-origin: bottom;
+    position: relative;
+  }
+  .vault-bill::after{
+    content:"";
+    position:absolute;
+    inset: 1px 28% 1px 28%;
+    background: rgba(0,0,0,0.18);
+    border-radius: 1px;
+  }
+  .vault-bill.hidden{
+    opacity: 0;
+    height: 0;
+    transform: scaleY(0);
+    margin-top: -3px;
+  }
+  /* spillover sparkle for very healthy */
+  .vault-sparkle{
+    position:absolute;
+    top: -12px; right: -12px;
+    width: 32px; height: 32px;
+    background: var(--jh-yellow);
+    border: 3px solid var(--jh-black);
+    border-radius: 50%;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight: 900;
+    font-size: 22px;
+    color: var(--jh-black);
+    z-index: 5;
+    transform: scale(0);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: 3px 3px 0 var(--jh-black);
+    line-height: 1;
+    padding-bottom: 2px;
+  }
+  .vault-sparkle::before{ content:"+"; }
+  .vault.boom .vault-sparkle{
+    transform: scale(1);
+    animation: bob 1.4s ease-in-out infinite;
+  }
+  @keyframes bob{
+    0%,100%{ transform: scale(1) translateY(0) rotate(-8deg); }
+    50%{ transform: scale(1.12) translateY(-3px) rotate(8deg); }
+  }
+
+  /* health bar — visual only, no percentage */
+  .health{
+    width: 130px;
+    margin-top: 6px;
+  }
+  .health-track{
+    width: 100%;
+    height: 12px;
+    background: #fff;
+    border: 2.5px solid var(--jh-black);
+    position:relative;
+    overflow:hidden;
+  }
+  .health-fill{
+    position:absolute;
+    top: 0; left: 0; bottom: 0;
+    background: var(--zone-color);
+    width: 100%;
+    transition: width 0.4s ease, background 0.3s ease;
+  }
+  .health-fill::after{
+    content:"";
+    position:absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      -45deg,
+      transparent 0, transparent 5px,
+      rgba(0,0,0,0.15) 5px, rgba(0,0,0,0.15) 8px
+    );
+  }
+
+  /* Pipe / conveyor */
+  .pipe{
+    position:relative;
+    width:100%;
+    height: 240px;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+    gap:0;
+  }
+  .pipe-track{
+    position:relative;
+    width:100%;
+    height:74px;
+    background: var(--jh-black);
+    border-top: 4px solid var(--jh-black);
+    border-bottom: 4px solid var(--jh-black);
+    overflow:hidden;
+    transition: background 0.4s ease;
+  }
+  .pipe-track::before{
+    content:"";
+    position:absolute;
+    top:0; left:0; right:0; bottom:0;
+    background-image: repeating-linear-gradient(
+      -55deg,
+      transparent 0,
+      transparent 22px,
+      var(--zone-stripe) 22px,
+      var(--zone-stripe) 44px
+    );
+    animation: slide var(--coin-speed) linear infinite;
+    transition: background-image 0.4s ease;
+  }
+  @keyframes slide{
+    0%{ transform: translateX(0); }
+    100%{ transform: translateX(44px); }
+  }
+
+  /* coins */
+  .coin{
+    position:absolute;
+    top:50%; transform:translateY(-50%);
+    width:34px; height:34px;
+    border-radius:50%;
+    background: radial-gradient(circle at 30% 30%, #FFE066, var(--jh-yellow) 60%, var(--jh-yellow-deep));
+    border: 2.5px solid var(--jh-black);
+    box-shadow: 0 2px 0 rgba(0,0,0,.3);
+    animation: travel var(--coin-speed) linear infinite;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:900; font-size:15px; color:var(--jh-black);
+  }
+  .coin::after{ content:"zł"; }
+  /* Distribute 8 coins evenly across animation cycle. JS toggles .hidden to reduce active count. */
+  .coin.c1{ animation-delay: 0s; }
+  .coin.c2{ animation-delay: calc(var(--coin-speed) * -0.125); }
+  .coin.c3{ animation-delay: calc(var(--coin-speed) * -0.25); }
+  .coin.c4{ animation-delay: calc(var(--coin-speed) * -0.375); }
+  .coin.c5{ animation-delay: calc(var(--coin-speed) * -0.5); }
+  .coin.c6{ animation-delay: calc(var(--coin-speed) * -0.625); }
+  .coin.c7{ animation-delay: calc(var(--coin-speed) * -0.75); }
+  .coin.c8{ animation-delay: calc(var(--coin-speed) * -0.875); }
+  .coin.hidden{ display:none; }
+
+  @keyframes travel{
+    0%   { left: -3%;  opacity: 0; }
+    8%   { opacity: 1; }
+    92%  { opacity: 1; }
+    100% { left: 103%; opacity: 0; }
+  }
+
+  /* day badge */
+  .day-badge{
+    position:absolute;
+    top: -56px; left:50%; transform:translateX(-50%);
+    background: var(--zone-color);
+    border:4px solid var(--jh-black);
+    padding:6px 24px 8px;
+    text-align:center;
+    box-shadow: 5px 5px 0 var(--jh-black);
+    z-index: 4;
+    transition: background 0.3s ease;
+  }
+  .day-badge::after{
+    content:"";
+    position:absolute;
+    bottom: -12px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 10px solid transparent;
+    border-right: 10px solid transparent;
+    border-top: 12px solid var(--jh-black);
+  }
+  .day-badge .num{
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:900;
+    font-size:58px;
+    line-height:.9;
+    color:var(--jh-black);
+    letter-spacing:-.02em;
+    min-width: 78px;
+    display:inline-block;
+  }
+  .day-badge .unit{
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:800;
+    font-size:13px;
+    letter-spacing:.3em;
+    text-transform:uppercase;
+    color:var(--jh-black);
+  }
+
+  /* arrows */
+  .pipe-arrow{
+    position:absolute;
+    top: 50%;
+    width: 0; height: 0;
+    z-index:2;
+  }
+  .pipe-arrow.left{
+    left: -2px;
+    border-right: 20px solid var(--jh-black);
+    border-top: 20px solid transparent;
+    border-bottom: 20px solid transparent;
+    transform: translateY(-50%) translateX(-100%);
+  }
+  .pipe-arrow.right{
+    right: -2px;
+    border-left: 20px solid var(--jh-black);
+    border-top: 20px solid transparent;
+    border-bottom: 20px solid transparent;
+    transform: translateY(-50%) translateX(100%);
+  }
+
+  .pipe-caption{
+    margin-top: 20px;
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:800;
+    font-size:18px;
+    color:var(--jh-black);
+    text-align:center;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    transition: color 0.3s ease;
+    display:flex; align-items:center; gap:12px; justify-content:center;
+  }
+  .pipe-caption .pip{
+    width:14px; height:14px;
+    background: var(--zone-color);
+    transition: background 0.3s ease;
+  }
+
+  /* ─── COMPARISON CARDS ───────────────────────────────── */
+  .compare{
+    padding: 4px 36px 14px;
+    display:grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+  }
+  .vs-card{
+    border: 2px solid var(--jh-black);
+    background: #fff;
+    padding: 11px 14px 12px;
+    display:grid;
+    grid-template-columns: 44px 1fr;
+    gap: 12px;
+    align-items:center;
+    position:relative;
+    overflow:hidden;
+    transition: all 0.25s ease;
+    opacity: 0.5;
+  }
+  .vs-card.active{
+    opacity: 1;
+    box-shadow: 5px 5px 0 var(--jh-black);
+    transform: translate(-1px,-1px);
+  }
+  .vs-card .badge{
+    width:44px; height:44px;
+    background: var(--jh-yellow);
+    border: 2px solid var(--jh-black);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .vs-card.warn .badge{ background: var(--jh-yellow-deep); }
+  .vs-card.bad .badge{ background: var(--jh-red); }
+  .vs-card .badge svg{ width:24px; height:24px; }
+
+  .vs-card .body .tag{
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:900;
+    font-size:10px;
+    letter-spacing:.25em;
+    text-transform:uppercase;
+    color: var(--jh-grey);
+    margin-bottom:0;
+  }
+  .vs-card .body .head{
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:800;
+    font-size:19px;
+    line-height:1;
+    color: var(--jh-black);
+    letter-spacing:-.005em;
+    margin: 1px 0 3px;
+  }
+  .vs-card .body .head em{
+    font-style:normal;
+    background:var(--jh-yellow);
+    padding: 0 6px 1px;
+  }
+  .vs-card.warn .body .head em{ background: var(--jh-yellow-deep); }
+  .vs-card.bad .body .head em{
+    background:var(--jh-red);
+    color: #fff;
+  }
+  .vs-card .body .desc{
+    font-size:11px;
+    line-height:1.3;
+    color: var(--jh-ink);
+  }
+  .vs-card .range-tag{
+    position:absolute;
+    top:0; right:0;
+    background: var(--jh-black);
+    color: var(--jh-yellow);
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size:9px;
+    padding: 2px 7px 3px;
+    letter-spacing:.05em;
+  }
+  .vs-card.bad .range-tag{ background: var(--jh-red); color:#fff; }
+
+  /* ─── FOOTER CTA ─────────────────────────────────────── */
+  .cta{
+    background: var(--jh-yellow);
+    border-top: 4px solid var(--jh-black);
+    padding: 11px 36px 11px;
+    display:flex;
+    align-items:center;
+    gap: 18px;
+    transition: background 0.4s ease;
+  }
+  .cta-mark{
+    width: 38px; height: 38px;
+    background: var(--jh-black);
+    color: var(--jh-yellow);
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+    transition: color 0.3s ease;
+  }
+  .cta-mark svg{ width:22px; height:22px; }
+  .cta-text{
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:800;
+    font-size: 18px;
+    line-height: 1.05;
+    color: var(--jh-black);
+    letter-spacing:-.005em;
+    flex:1;
+  }
+  .cta-text small{
+    display:block;
+    font-family:'Manrope',sans-serif;
+    font-weight:600;
+    font-size:9px;
+    letter-spacing:.28em;
+    text-transform:uppercase;
+    color: var(--jh-black);
+    opacity:.65;
+    margin-bottom: 2px;
+  }
+  .cta-tail{
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:800;
+    font-size: 10px;
+    letter-spacing: .25em;
+    text-transform: uppercase;
+    color: var(--jh-black);
+    text-align:right;
+    opacity:.7;
+    line-height: 1.3;
+  }
+  .cta-tail strong{ display:block; font-size:12px; opacity:1; }
+
+  @media print{
+    body{ background:#fff; padding:0; }
+    .page{ box-shadow:none; }
+    @page{ size: A4 landscape; margin: 0; }
+  }
+</style>
+</head>
+<body>
+  <div class="page" id="page">
+
+    <!-- HEADER -->
+    <header class="header">
+      <div class="h-left">
+        <div class="h-mark"><span class="accent">DSO</span></div>
+        <div class="h-tag">
+          <span class="eyebrow">Days Sales Outstanding</span>
+          <span class="name">Wynegocjuj — albo obejrzyj demo</span>
+        </div>
+      </div>
+      <div class="h-right">
+        <span class="kicker">Termin płatności</span>
+        <span class="lead">= płynność <em>firmy</em></span>
+      </div>
+    </header>
+
+    <!-- GAME CONTROL BAR -->
+    <div class="controls">
+      <!-- LEFT: current state -->
+      <div class="game-state">
+        <div class="state-pill">
+          <div class="num" id="state-num">75</div>
+          <div class="unit">DNI · DSO</div>
+        </div>
+        <div class="state-meta">
+          <span class="lbl">Stan</span>
+          <span class="val" id="state-verdict">PIENIĄDZE STOJĄ</span>
+        </div>
+      </div>
+
+      <!-- CENTER: the big negotiate button -->
+      <div class="negotiate-wrap">
+        <button class="negotiate-btn" id="negotiate-btn">
+          <span class="icon">🤝</span>
+          <div class="label-stack">
+            <span>Wynegocjuj krótszy termin</span>
+            <small>klikaj szybciej = większy combo!</small>
+          </div>
+        </button>
+        <div class="combo-meter" id="combo-meter">
+          <span class="label">Combo</span>
+          <div class="bar"><div class="fill" id="combo-fill"></div></div>
+          <span class="num" id="combo-num">×1</span>
+        </div>
+      </div>
+
+      <!-- RIGHT: counter + demo + reset -->
+      <div class="game-meta">
+        <div class="counter">
+          <span class="lbl">Negocjacje</span>
+          <span class="num" id="neg-count">0</span>
+          <div class="unit">rozmów</div>
+        </div>
+        <button class="demo-btn attract" id="demo-btn" title="Obejrzyj demo">
+          <span class="icon" id="demo-icon">▶</span>
+          <span id="demo-label">Demo</span>
+        </button>
+        <button class="reset-btn" id="reset-btn" title="Zacznij od nowa">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12a9 9 0 1 0 3-6.7"/>
+            <path d="M3 4v5h5"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Achievement banner (hidden by default) -->
+      <div class="achievement" id="achievement"></div>
+    </div>
+
+    <!-- HERO FLOW -->
+    <section class="hero">
+      <div class="flow">
+        <!-- LEFT NODE: faktura -->
+        <div class="node left">
+          <span class="dot">Dzień 0</span>
+          <div class="icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#0A0A0A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 3h11l3 3v15H5z"/>
+              <path d="M16 3v3h3"/>
+              <path d="M8 9h8M8 13h8M8 17h5"/>
+            </svg>
+          </div>
+          <span class="label">Faktura</span>
+          <span class="sub">wystawiona — sprzedaż na papierze</span>
+        </div>
+
+        <!-- PIPE -->
+        <div class="pipe">
+          <div class="day-badge">
+            <div><span class="num" id="badge-num">30</span></div>
+            <div class="unit">dni czekania</div>
+          </div>
+
+          <div class="pipe-track">
+            <div class="pipe-arrow left"></div>
+            <div class="pipe-arrow right"></div>
+            <div class="coin c1"></div>
+            <div class="coin c2"></div>
+            <div class="coin c3"></div>
+            <div class="coin c4"></div>
+            <div class="coin c5"></div>
+            <div class="coin c6"></div>
+            <div class="coin c7 hidden"></div>
+            <div class="coin c8 hidden"></div>
+          </div>
+
+          <div class="pipe-caption">
+            <span class="pip"></span>
+            <span id="verdict-text">PŁYNNOŚĆ OK · pieniądze krążą sprawnie</span>
+          </div>
+        </div>
+
+        <!-- RIGHT NODE: vault (dynamic) -->
+        <div class="node right">
+          <span class="dot" id="endday-label">Dzień 30</span>
+          <div class="vault" id="vault">
+            <div class="vault-dial"></div>
+            <div class="vault-label">PLN</div>
+            <div class="vault-window">
+              <div class="vault-bill"></div>
+              <div class="vault-bill"></div>
+              <div class="vault-bill"></div>
+              <div class="vault-bill"></div>
+              <div class="vault-bill"></div>
+              <div class="vault-bill"></div>
+              <div class="vault-bill"></div>
+              <div class="vault-bill"></div>
+            </div>
+            <div class="vault-sparkle"></div>
+          </div>
+          <span class="label">Konto</span>
+          <div class="health">
+            <div class="health-track">
+              <div class="health-fill" id="health-fill"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- COMPARISON / LEGEND -->
+    <section class="compare">
+      <div class="vs-card good" data-zone="good">
+        <span class="range-tag">≤ 30 dni</span>
+        <div class="badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#0A0A0A" stroke-width="2.5" stroke-linecap="square">
+            <path d="M4 14l5-5 4 4 7-7"/>
+            <path d="M14 6h6v6"/>
+          </svg>
+        </div>
+        <div class="body">
+          <div class="tag">Niskie DSO</div>
+          <div class="head">Pieniądze <em>płyną</em></div>
+          <div class="desc">Cash krąży, lepsza płynność firmy.</div>
+        </div>
+      </div>
+
+      <div class="vs-card warn" data-zone="warn">
+        <span class="range-tag">31–60 dni</span>
+        <div class="badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#0A0A0A" stroke-width="2.5" stroke-linecap="square">
+            <path d="M3 12h18"/>
+            <path d="M14 7l5 5-5 5"/>
+          </svg>
+        </div>
+        <div class="body">
+          <div class="tag">Średnie DSO</div>
+          <div class="head">Cykl <em>się wydłuża</em></div>
+          <div class="desc">Pieniądze wolniej wracają do firmy.</div>
+        </div>
+      </div>
+
+      <div class="vs-card bad" data-zone="bad">
+        <span class="range-tag">&gt; 60 dni</span>
+        <div class="badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="square">
+            <path d="M4 10l5 5 4-4 7 7"/>
+            <path d="M14 18h6v-6"/>
+          </svg>
+        </div>
+        <div class="body">
+          <div class="tag">Wysokie DSO</div>
+          <div class="head">Pieniądze <em>stoją</em></div>
+          <div class="desc">Cash zamrożony — ryzyko luki gotówkowej.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="cta">
+      <div class="cta-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square">
+          <path d="M3 12h13M12 6l7 6-7 6"/>
+        </svg>
+      </div>
+      <div class="cta-text">
+        <small>W realu działa to dokładnie tak samo</small>
+        Każda rozmowa z klientem o terminie płatności = realna płynność firmy.
+      </div>
+      <div class="cta-tail">
+        Finance Brief<br>
+        <strong>Working Capital</strong>
+      </div>
+    </section>
+
+  </div>
+
+<script>
+  // ─── DOM ────────────────────────────────────────────────
+  const stateNum = document.getElementById('state-num');
+  const stateVerdict = document.getElementById('state-verdict');
+  const negCount = document.getElementById('neg-count');
+  const negotiateBtn = document.getElementById('negotiate-btn');
+  const resetBtn = document.getElementById('reset-btn');
+  const demoBtn = document.getElementById('demo-btn');
+  const demoIcon = document.getElementById('demo-icon');
+  const demoLabel = document.getElementById('demo-label');
+  const achievementEl = document.getElementById('achievement');
+  const comboMeter = document.getElementById('combo-meter');
+  const comboFill = document.getElementById('combo-fill');
+  const comboNum = document.getElementById('combo-num');
+
+  const badgeNum = document.getElementById('badge-num');
+  const endLabel = document.getElementById('endday-label');
+  const verdictText = document.getElementById('verdict-text');
+  const healthFill = document.getElementById('health-fill');
+  const vault = document.getElementById('vault');
+  const vaultBills = vault.querySelectorAll('.vault-bill');
+  const root = document.documentElement;
+  const page = document.getElementById('page');
+  const coins = document.querySelectorAll('.coin');
+  const cards = document.querySelectorAll('.vs-card');
+
+  // ─── ZONES ──────────────────────────────────────────────
+  const ZONES = {
+    good: {
+      color: '#FFCB05', stripe: 'rgba(255,203,5,0.20)', tint: 'rgba(255,203,5,0.06)',
+      verdict: 'PŁYNNOŚĆ OK · pieniądze krążą sprawnie',
+      shortVerdict: 'PIENIĄDZE PŁYNĄ',
+    },
+    warn: {
+      color: '#F5B400', stripe: 'rgba(245,180,0,0.22)', tint: 'rgba(245,180,0,0.10)',
+      verdict: 'CYKL SIĘ WYDŁUŻA · uważaj na płynność',
+      shortVerdict: 'CYKL SIĘ WYDŁUŻA',
+    },
+    bad: {
+      color: '#E30613', stripe: 'rgba(227,6,19,0.22)', tint: 'rgba(227,6,19,0.07)',
+      verdict: 'CZERWONA STREFA · pieniądze stoją',
+      shortVerdict: 'PIENIĄDZE STOJĄ',
+    },
+  };
+  const getZone = d => d <= 30 ? 'good' : d <= 60 ? 'warn' : 'bad';
+
+  // ─── GAME STATE ─────────────────────────────────────────
+  const game = {
+    startDso: 75,
+    minDso: 7,
+    maxDso: 90,
+    dso: 75,
+    negotiations: 0,
+    achievements: new Set(),
+    combo: 1,
+  };
+
+  // ─── ACHIEVEMENTS (kept minimal — only major milestones pop) ─
+  const ACHIEVEMENTS = [
+    { id: 'first',     test: g => g.negotiations === 1,
+      title: 'PIERWSZA ROZMOWA', emoji: '💬' },
+    { id: 'gotGood',   test: g => g.dso <= 30 && !g.achievements.has('gotGood'),
+      title: 'NISKIE DSO!', emoji: '💪' },
+    { id: 'champion',  test: g => g.dso <= 14 && !g.achievements.has('champion'),
+      title: 'MISTRZ NEGOCJACJI', emoji: '🏆' },
+    { id: 'maxed',     test: g => g.dso <= g.minDso && !g.achievements.has('maxed'),
+      title: 'MAKSYMALNA PŁYNNOŚĆ', emoji: '⚡' },
+  ];
+
+  function showAchievement(a){
+    achievementEl.innerHTML =
+      '<small>Osiągnięcie odblokowane</small>' +
+      '<span class="emoji">' + a.emoji + '</span>' + a.title;
+    achievementEl.classList.remove('show');
+    void achievementEl.offsetWidth;
+    achievementEl.classList.add('show');
+  }
+
+  function checkAchievements(){
+    for (const a of ACHIEVEMENTS) {
+      if (game.achievements.has(a.id)) continue;
+      if (a.test(game)) {
+        game.achievements.add(a.id);
+        showAchievement(a);
+        break;
+      }
+    }
+  }
+
+  // ─── RENDER ─────────────────────────────────────────────
+  function render(){
+    const days = game.dso;
+
+    stateNum.textContent = days;
+    badgeNum.textContent = days;
+    endLabel.textContent = 'Dzień ' + days;
+    negCount.textContent = game.negotiations;
+
+    const speed = 2.6 + ((days - 7) / 83) * 10.4;
+    root.style.setProperty('--coin-speed', speed.toFixed(2) + 's');
+
+    const count = Math.round(8 - ((days - 7) / 83) * 5);
+    coins.forEach((c, i) => c.classList.toggle('hidden', i >= count));
+
+    const zone = getZone(days);
+    const z = ZONES[zone];
+    root.style.setProperty('--zone-color', z.color);
+    root.style.setProperty('--zone-stripe', z.stripe);
+    root.style.setProperty('--zone-tint', z.tint);
+    verdictText.textContent = z.verdict;
+    stateVerdict.textContent = z.shortVerdict;
+
+    cards.forEach(c => c.classList.toggle('active', c.dataset.zone === zone));
+
+    const billCount = Math.max(1, Math.round(8 - ((days - 7) / 83) * 7));
+    vaultBills.forEach((b, i) => b.classList.toggle('hidden', i >= billCount));
+
+    healthFill.style.width = (100 - ((days - 7) / 83) * 90) + '%';
+
+    vault.classList.toggle('boom', days <= 14);
+
+    // negotiate button state
+    const reachedMin = days <= game.minDso;
+    negotiateBtn.disabled = reachedMin || demoActive;
+    if (reachedMin) {
+      negotiateBtn.querySelector('.label-stack span').textContent = 'Termin nie do skrócenia';
+      negotiateBtn.querySelector('.label-stack small').textContent = 'maksymalna płynność osiągnięta';
+    } else if (demoActive) {
+      negotiateBtn.querySelector('.label-stack span').textContent = 'Demo w toku…';
+      negotiateBtn.querySelector('.label-stack small').textContent = 'kliknij STOP DEMO aby zagrać samemu';
+    } else {
+      negotiateBtn.querySelector('.label-stack span').textContent = 'Wynegocjuj krótszy termin';
+      negotiateBtn.querySelector('.label-stack small').textContent = 'klikaj szybciej = większy combo!';
+    }
+  }
+
+  // ─── COMBO (sliding window of click times) ──────────────
+  // Approach: keep timestamps of clicks within last 1.5s.
+  // CPS within window → combo level (1 to 8).
+  // A separate decay timer ticks down combo when no clicks come in.
+  const WINDOW_MS = 1500;
+  let clickWindow = []; // array of timestamps (ms)
+  let lastRenderedCombo = 1;
+
+  function pruneWindow(){
+    const now = performance.now();
+    while (clickWindow.length && now - clickWindow[0] > WINDOW_MS) {
+      clickWindow.shift();
+    }
+  }
+
+  function computeCombo(){
+    pruneWindow();
+    const n = clickWindow.length;
+    if (n < 2) return 1;
+    // CPS measured over actual span between first and last click in window
+    const span = clickWindow[n-1] - clickWindow[0];
+    const cps = span > 0 ? (n - 1) * 1000 / span : n;
+    // Map CPS → combo level. 1cps→1, 2cps→2, 4cps→4, 6cps→6, 8+cps→8
+    const combo = Math.min(8, Math.max(1, Math.round(cps)));
+    return combo;
+  }
+
+  function updateComboDisplay(){
+    const combo = computeCombo();
+    game.combo = combo;
+    if (combo === lastRenderedCombo) return;
+    lastRenderedCombo = combo;
+
+    comboNum.textContent = '×' + combo;
+    comboFill.style.width = ((combo - 1) / 7 * 100) + '%';
+    comboMeter.classList.toggle('active', combo >= 2);
+    comboMeter.classList.toggle('hot', combo >= 6);
+    negotiateBtn.classList.toggle('hot', combo >= 5);
+  }
+
+  // gentle decay loop — combo naturally fades when no clicks come in
+  setInterval(updateComboDisplay, 120);
+
+  // ─── NEGOTIATION ────────────────────────────────────────
+  function negotiate(){
+    if (game.dso <= game.minDso || demoActive) return;
+
+    // Record the click and recompute combo for this click
+    clickWindow.push(performance.now());
+    pruneWindow();
+    const combo = computeCombo();
+    game.combo = combo;
+
+    // delta = combo dni
+    let delta = -combo;
+    if (game.dso + delta < game.minDso) delta = game.minDso - game.dso;
+
+    game.negotiations += 1;
+    game.dso += delta;
+
+    // visual feedback woven into the UI rather than popups:
+    // - combo meter updates immediately
+    // - on big combos, shoot a coin from button to the vault
+    if (combo >= 4) shootCoin();
+
+    updateComboDisplay();
+    render();
+    checkAchievements();
+  }
+
+  function shootCoin(){
+    const btnRect = negotiateBtn.getBoundingClientRect();
+    const vaultRect = vault.getBoundingClientRect();
+    const pageRect = page.getBoundingClientRect();
+    const startX = btnRect.left + btnRect.width/2 - pageRect.left;
+    const startY = btnRect.top + 10 - pageRect.top;
+    const endX = vaultRect.left + vaultRect.width/2 - pageRect.left;
+    const endY = vaultRect.top + vaultRect.height/2 - pageRect.top;
+
+    const c = document.createElement('div');
+    c.className = 'coin-burst';
+    c.style.left = startX + 'px';
+    c.style.top = startY + 'px';
+    page.appendChild(c);
+    requestAnimationFrame(() => {
+      c.style.left = endX + 'px';
+      c.style.top = endY + 'px';
+      c.style.transform = 'scale(0.4) rotate(540deg)';
+      c.style.opacity = '0.2';
+    });
+    setTimeout(() => c.remove(), 1100);
+  }
+
+  // ─── DEMO MODE (smooth value cycling, NOT click simulation) ─
+  let demoActive = false;
+  let demoFrameId = null;
+  let demoLegTimeout = null;
+
+  // Smooth easing
+  const easeInOutSine = t => 0.5 - Math.cos(t * Math.PI) / 2;
+
+  function animateDsoTo(targetVal, duration, onDone){
+    const startVal = game.dso;
+    const startT = performance.now();
+    function tick(){
+      if (!demoActive) return;
+      const t = Math.min(1, (performance.now() - startT) / duration);
+      const e = easeInOutSine(t);
+      game.dso = Math.round(startVal + (targetVal - startVal) * e);
+      render();
+      if (t < 1) {
+        demoFrameId = requestAnimationFrame(tick);
+      } else {
+        onDone && onDone();
+      }
+    }
+    demoFrameId = requestAnimationFrame(tick);
+  }
+
+  // Demo journey:
+  //   start at 45 → animate to 7  (4.5s, "look how good it can get")
+  //   pause      → animate to 90 (5.5s, "look how bad it can get")
+  //   pause      → animate to 7  (5.5s) — loop
+  //   pause      → animate to 90 (5.5s) — loop
+  function demoLoop(toMin){
+    if (!demoActive) return;
+    const target = toMin ? game.minDso : game.maxDso;
+    const duration = toMin ? 5500 : 5500;
+    demoLegTimeout = setTimeout(() => {
+      animateDsoTo(target, duration, () => {
+        demoLoop(!toMin);
+      });
+    }, 700); // small pause between legs
+  }
+
+  function startDemo(){
+    if (demoActive) return;
+    demoActive = true;
+    // remove the attract pulse on the demo button — user has discovered it
+    demoBtn.classList.remove('attract');
+    demoBtn.classList.add('active');
+    demoIcon.textContent = '■';
+    demoLabel.textContent = 'Stop demo';
+
+    // Clear any combo from prior manual play - demo doesn't use combo
+    clickWindow = [];
+    game.combo = 1;
+    lastRenderedCombo = -1;
+    updateComboDisplay();
+
+    // Always start demo from 45 (the standard / typical case)
+    game.dso = 45;
+    render();
+
+    setTimeout(() => animateDsoTo(game.minDso, 5500, () => demoLoop(false)), 700);
+  }
+
+  function stopDemo(){
+    if (!demoActive) return;
+    demoActive = false;
+    if (demoFrameId) cancelAnimationFrame(demoFrameId);
+    if (demoLegTimeout) clearTimeout(demoLegTimeout);
+    demoFrameId = null;
+    demoLegTimeout = null;
+
+    demoBtn.classList.remove('active');
+    demoIcon.textContent = '▶';
+    demoLabel.textContent = 'Demo';
+
+    render();
+  }
+
+  // Patch checkAchievements to skip during demo
+  const _origCheck = checkAchievements;
+  checkAchievements = function(){
+    if (demoActive) return;
+    _origCheck();
+  };
+
+  // ─── EVENTS ─────────────────────────────────────────────
+  negotiateBtn.addEventListener('click', () => {
+    if (demoActive) return; // disabled anyway, but defensive
+    negotiate();
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space' && document.activeElement !== negotiateBtn && !demoActive) {
+      e.preventDefault();
+      negotiate();
+    }
+  });
+
+  resetBtn.addEventListener('click', () => {
+    stopDemo();
+    game.dso = game.startDso;
+    game.negotiations = 0;
+    game.achievements.clear();
+    clickWindow = [];
+    game.combo = 1;
+    lastRenderedCombo = -1;  // force redraw of combo meter
+    achievementEl.classList.remove('show');
+    updateComboDisplay();
+    render();
+  });
+
+  demoBtn.addEventListener('click', () => {
+    if (demoActive) stopDemo(); else startDemo();
+  });
+
+  // ─── INIT ───────────────────────────────────────────────
+  render();
+  updateComboDisplay();
+  // demo does NOT auto-start — user clicks demo button if they want it
+</script>
+</body>
+</html>
