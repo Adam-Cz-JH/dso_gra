@@ -2,7 +2,7 @@
 
 Interaktywna infografika i mini-gra pokazująca, jak termin płatności (DSO — *Days Sales Outstanding*) wpływa na płynność finansową firmy. Stylistyka korporacyjna Jungheinrich: żółć, czerń, mocna typografia, animowany przepływ pieniądza.
 
-> **[▶ Otwórz grę](https://TWOJ-LOGIN.github.io/NAZWA-REPO/)** ← podmień ten link po wdrożeniu
+> **[▶ Otwórz grę](https://https://adam-cz-jh.github.io/dso_gra//)** ← podmień ten link po wdrożeniu
 
 ![Stan początkowy — alarm, 75 dni, pieniądze stoją](screenshot-before.png)
 
